@@ -1,50 +1,93 @@
 // server.js
+
 const express = require("express");
-const http    = require("http");
-const cors    = require("cors");
+const http = require("http");
+const cors = require("cors");
 const { Server } = require("socket.io");
 const os = require("os");
 
 const app = express();
-app.use(cors());
+
+/*
+────────────────────────────────────────────
+ CORS CONFIGURATION
+Autorise uniquement ton frontend (Vercel)
+En local → fonctionne aussi si CLIENT_URL n'est pas défini
+────────────────────────────────────────────
+*/
+
+const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:3000";
+
+app.use(cors({
+    origin: CLIENT_URL,
+    methods: ["GET", "POST"],
+    credentials: true
+}));
+
 app.use(express.json());
 
 const server = http.createServer(app);
 
-// ─── Socket.io ──────────────────────────────
-// CORS configuré pour PC (localhost) + réseau local (IP du PC)
+/*
+────────────────────────────────────────────
+🔌 SOCKET.IO CONFIGURATION
+Même configuration CORS que Express
+────────────────────────────────────────────
+*/
+
 const io = new Server(server, {
     cors: {
-        origin: "*",  // accepte toutes les origines
+        origin: CLIENT_URL,
         methods: ["GET", "POST"],
-    },
+        credentials: true
+    }
 });
 
-// ─── Rooms prédéfinies ───────────────────────
+/*
+────────────────────────────────────────────
+ ROOMS PRÉDÉFINIES
+────────────────────────────────────────────
+*/
+
 const rooms = {
-    "Generale":  { users: [] },
-    "Codding":   { users: [] },
-    "Support":    { users: [] },
-    "Entraide":  { users: [] },
+    "Generale": { users: [] },
+    "Codding": { users: [] },
+    "Support": { users: [] },
+    "Entraide": { users: [] },
 };
 
-// ─── Route REST : récupérer la liste des rooms ───
-app.get("/rooms", (req, res) => {
-    const list = Object.entries(rooms).map(([name, data]) => ({
-        name,
-        count: data.users.length,
-    }));
-    res.json(list);
+/*
+────────────────────────────────────────────
+ ROUTE TEST (évite "Cannot GET /")
+────────────────────────────────────────────
+*/
+
+app.get("/", (req, res) => {
+    res.send("Backend is running 🚀");
 });
 
-// ─── Socket.io events ────────────────────────
+/*
+────────────────────────────────────────────
+ROUTE REST : Liste des rooms
+────────────────────────────────────────────
+*/
+
+app.get("/rooms", (req, res) => {
+    res.json(getRoomsList());
+});
+
+/*
+────────────────────────────────────────────
+⚡ SOCKET EVENTS
+────────────────────────────────────────────
+*/
+
 io.on("connection", (socket) => {
     console.log(`✅ Connecté : ${socket.id}`);
 
-    // Envoyer la liste des rooms dès la connexion
     socket.emit("rooms_list", getRoomsList());
 
-    // ── Rejoindre une room ──────────────────
+    // Rejoindre une room
     socket.on("join_room", ({ username, room }) => {
         if (!rooms[room]) rooms[room] = { users: [] };
 
@@ -55,8 +98,6 @@ io.on("connection", (socket) => {
         if (!rooms[room].users.find(u => u.socketId === socket.id)) {
             rooms[room].users.push({ socketId: socket.id, username });
         }
-
-        console.log(`👤 ${username} → room "${room}" (${rooms[room].users.length} participants)`);
 
         io.to(room).emit("receive_message", {
             author: "Système",
@@ -69,29 +110,29 @@ io.on("connection", (socket) => {
         io.emit("rooms_list", getRoomsList());
     });
 
-    // ── Créer une nouvelle room ─────────────
+    // Créer une room
     socket.on("create_room", ({ roomName }) => {
         const name = roomName.trim();
         if (!name || rooms[name]) return;
+
         rooms[name] = { users: [] };
-        console.log(`🆕 Room créée : "${name}"`);
         io.emit("rooms_list", getRoomsList());
     });
 
-    // ── Envoyer un message ──────────────────
+    // Envoyer message
     socket.on("send_message", (data) => {
-        console.log(`💬 "${data.author}" → "${data.room}": ${data.message}`);
         io.to(data.room).emit("receive_message", data);
     });
 
-    // ── Déconnexion ─────────────────────────
+    // Déconnexion
     socket.on("disconnect", () => {
         const room = socket.currentRoom;
         const username = socket.currentUsername;
         if (!room || !rooms[room]) return;
 
-        rooms[room].users = rooms[room].users.filter(u => u.socketId !== socket.id);
-        console.log(`❌ ${username} a quitté "${room}"`);
+        rooms[room].users = rooms[room].users.filter(
+            u => u.socketId !== socket.id
+        );
 
         io.to(room).emit("receive_message", {
             author: "Système",
@@ -99,14 +140,23 @@ io.on("connection", (socket) => {
             time: now(),
             system: true,
         });
+
         io.to(room).emit("room_users", rooms[room].users);
         io.emit("rooms_list", getRoomsList());
     });
 });
 
-// ─── Helpers ───────────────────────────────
+/*
+────────────────────────────────────────────
+HELPERS
+────────────────────────────────────────────
+*/
+
 function now() {
-    return new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+    return new Date().toLocaleTimeString("fr-FR", {
+        hour: "2-digit",
+        minute: "2-digit"
+    });
 }
 
 function getRoomsList() {
@@ -116,18 +166,15 @@ function getRoomsList() {
     }));
 }
 
-// ─── Fonction pour récupérer l'IP locale ───
-function getLocalIP() {
-    const interfaces = os.networkInterfaces();
-    for (let iface of Object.values(interfaces)) {
-        for (let alias of iface) {
-            if (alias.family === "IPv4" && !alias.internal) return alias.address;
-        }
-    }
-    return "localhost";
-}
+/*
+────────────────────────────────────────────
+ SERVER START
+Render fournit automatiquement process.env.PORT
+────────────────────────────────────────────
+*/
 
-// ─── Démarrage serveur ────────────────────
-const PORT = 5000;
-const localIP = getLocalIP();
-server.listen(PORT, () => console.log(`🚀 Serveur sur http://${localIP}:${PORT}`));
+const PORT = process.env.PORT || 5000;
+
+server.listen(PORT, () => {
+    console.log(` Server running on port ${PORT}`);
+});
