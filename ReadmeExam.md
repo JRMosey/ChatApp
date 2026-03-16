@@ -3,31 +3,93 @@
 ## Question 1 - Analyse du code existant
 
 ### App.js
-App.js est le composant principal de l'application React. Il gère le routage entre les différentes pages de l'application, comme la page de connexion (Join) et la page du chat (Chat). Il initialise également la structure générale de l'application.
+`App.js` est le composant principal de l'application React.  
+Il gère l'état global de l'application, notamment le pseudo de l'utilisateur, la room sélectionnée et l'état de connexion.
+
+Selon cet état, il affiche soit le composant `Join.js` (écran de connexion), soit le composant `Chat.js` (interface du chat).
+
+---
 
 ### Chat.js
-Chat.js représente la page principale de discussion. Ce composant gère l'affichage des messages, l'envoi de nouveaux messages et la communication avec le serveur via Socket.io pour recevoir et envoyer les messages en temps réel.
+`Chat.js` est le composant principal de la discussion.
+
+Il gère :
+- l'envoi des messages vers le serveur avec Socket.io ;
+- la réception des messages en temps réel ;
+- l'affichage de la liste des utilisateurs connectés ;
+- l'affichage de l'historique d'activité ;
+- le bouton permettant de quitter la salle.
+
+Les messages reçus sont stockés dans un état React et affichés avec le composant `Message.js`.
+
+---
 
 ### Message.js
-Message.js est un composant utilisé pour afficher un message individuel dans la conversation. Il s'occupe de formater et afficher correctement le message ainsi que le nom de l'utilisateur qui l'a envoyé.
+`Message.js` est un composant utilisé pour afficher un message individuel dans la conversation.
+
+Il gère :
+- l'affichage du texte du message ;
+- l'affichage du nom de l'auteur (si ce n'est pas l'utilisateur courant) ;
+- l'heure d'envoi du message ;
+- l'indicateur visuel **✓✓ Lu** pour les messages envoyés par l'utilisateur courant.
+
+---
 
 ### Sidebar.js
-Sidebar.js affiche la liste des utilisateurs connectés dans la salle de discussion. Il permet aux utilisateurs de voir qui est présent dans la conversation.
+`Sidebar.js` affiche un panneau latéral contenant :
+
+- la liste des utilisateurs connectés dans la room ;
+- une section **Activité récente** qui montre les derniers évènements de connexion ou de déconnexion.
+
+Ce composant reçoit les données depuis `Chat.js`.
+
+---
 
 ### Join.js
-Join.js est la page d'entrée de l'application. Elle permet à l'utilisateur d'entrer son nom et éventuellement une salle de discussion avant de rejoindre le chat.
+`Join.js` est l'écran d'entrée de l'application.
+
+Il permet à l'utilisateur :
+
+- d'entrer son pseudo ;
+- de choisir une room existante ;
+- de créer une nouvelle room ;
+- de définir un mot de passe optionnel pour une salle privée ;
+- d'entrer un mot de passe si la salle sélectionnée est protégée.
+
+---
 
 ### server.js
-server.js est le serveur backend de l'application. Il utilise Node.js et Socket.io pour gérer les connexions des utilisateurs, recevoir les messages et les diffuser aux autres utilisateurs connectés.
+`server.js` est le backend Node.js de l'application.
+
+Il utilise **Express** et **Socket.io** pour :
+
+- gérer les connexions des utilisateurs ;
+- gérer les rooms ;
+- recevoir et diffuser les messages ;
+- maintenir la liste des utilisateurs dans chaque room ;
+- envoyer des notifications d'activité ;
+- vérifier les mots de passe pour les salles privées.
+
+---
 
 ### SocketContext.js
-SocketContext.js crée un contexte React pour gérer la connexion Socket.io dans toute l'application. Cela permet aux composants React d'accéder facilement à la connexion socket sans devoir la recréer dans chaque composant.
+`SocketContext.js` permet de créer **une seule instance du socket Socket.io** pour toute l'application React.
 
-## Question 2 - Communication frontend / backend
+Le socket est stocké dans un **Context React**, ce qui permet à tous les composants (`Chat`, `Join`, etc.) d'utiliser la même connexion avec le serveur grâce au hook :
 
-### 1. Création et partage du socket dans React
+```js
+const socket = useSocket();
+```
 
-Le socket est créé dans le fichier `SocketContext.js` à l'aide de la bibliothèque `socket.io-client`.
+Cela évite de recréer plusieurs connexions inutiles.
+
+---
+
+# Question 2 - Communication frontend / backend
+
+## Création et partage du socket
+
+Le socket est créé dans `SocketContext.js` :
 
 ```javascript
 const socket = io(SERVER_URL, {
@@ -36,16 +98,9 @@ const socket = io(SERVER_URL, {
 });
 ```
 
-Cette instance est créée **une seule fois au niveau du module**, en dehors des composants React.  
-Cela permet d'éviter les connexions multiples et les problèmes causés par React StrictMode.
+L'option `autoConnect: false` permet de contrôler manuellement la connexion après que l'utilisateur ait choisi son pseudo.
 
-Ensuite, cette connexion est partagée dans toute l'application grâce au **Context API** de React :
-
-```javascript
-const SocketContext = createContext(null);
-```
-
-Le `SocketProvider` rend le socket accessible à tous les composants :
+Le socket est ensuite partagé dans toute l'application grâce au **Context API** :
 
 ```javascript
 <SocketContext.Provider value={socket}>
@@ -53,96 +108,80 @@ Le `SocketProvider` rend le socket accessible à tous les composants :
 </SocketContext.Provider>
 ```
 
-Les composants peuvent ensuite récupérer le socket grâce au hook personnalisé :
+Les composants peuvent récupérer cette connexion avec :
 
 ```javascript
 const socket = useSocket();
 ```
 
-Par exemple, les composants `Chat.js` et `Join.js` utilisent ce hook pour communiquer avec le serveur.
-
 ---
 
-### 2. Évènement Socket.io lorsqu'un utilisateur rejoint une room
+## Évènement lorsqu'un utilisateur rejoint une room
 
-Quand un utilisateur rejoint une room, le frontend émet l'évènement `join_room`.
-
-Dans `Join.js`, on voit :
+Quand un utilisateur rejoint une room, le frontend envoie l'évènement :
 
 ```javascript
 socket.emit("join_room", {
-    username: username.trim(),
-    room: roomToJoin.trim(),
+    username,
+    room,
+    password
 });
 ```
 
-Cet évènement envoie au serveur :
-
-- le nom d'utilisateur (`username`)
-- le nom de la room (`room`)
-
-Côté serveur, dans `server.js`, l'évènement est reçu ici :
+Le serveur reçoit cet évènement dans `server.js` :
 
 ```javascript
-socket.on("join_room", ({ username, room }) => {
+socket.on("join_room", ({ username, room, password }) => {
 ```
 
-Lorsque cet évènement est reçu, le serveur :
+Le serveur :
 
-- crée la room si elle n'existe pas ;
-- ajoute le socket dans la room avec `socket.join(room)` ;
-- enregistre la room et le pseudo dans `socket.currentRoom` et `socket.currentUsername` ;
-- ajoute l'utilisateur dans la liste `rooms[room].users` ;
-- envoie un message système indiquant que l'utilisateur a rejoint la room ;
-- met à jour la liste des utilisateurs avec `room_users` ;
-- met à jour la liste globale des rooms avec `rooms_list`.
+1. vérifie si la room existe ;
+2. vérifie le mot de passe si la room est protégée ;
+3. ajoute l'utilisateur dans la room avec `socket.join(room)` ;
+4. ajoute l'utilisateur dans la liste `rooms[room].users` ;
+5. envoie un message système indiquant que l'utilisateur a rejoint ;
+6. met à jour la liste des utilisateurs ;
+7. met à jour la liste des rooms.
 
 ---
 
-### 3. Diffusion des messages dans une room (emit vs broadcast)
+## Diffusion des messages
 
-Quand un utilisateur envoie un message dans `Chat.js`, le frontend émet l'évènement :
+Quand un utilisateur envoie un message dans `Chat.js` :
 
 ```javascript
 socket.emit("send_message", messageData);
 ```
 
-Le serveur reçoit ensuite cet évènement dans `server.js` :
+Le serveur reçoit ce message puis le diffuse avec :
 
 ```javascript
-socket.on("send_message", (data) => {
-    io.to(data.room).emit("receive_message", data);
-});
+io.to(data.room).emit("receive_message", data);
 ```
 
-La méthode :
+Cela envoie le message **à tous les utilisateurs de la room**, y compris l'expéditeur.
 
-```javascript
-io.to(room).emit(...)
-```
+### Différence entre emit et broadcast
 
-envoie le message à **tous les utilisateurs présents dans la room**, y compris l'expéditeur.
+- `io.to(room).emit()` → envoie le message à tous les utilisateurs de la room.
+- `socket.broadcast.to(room).emit()` → envoie le message à tous les autres utilisateurs sauf l'expéditeur.
 
-#### Différence entre `emit` et `broadcast`
-
-- `io.to(room).emit(...)` : envoie l'évènement à tous les utilisateurs de la room, **y compris l'expéditeur**.
-- `socket.broadcast.to(room).emit(...)` : envoie l'évènement **à tous les autres utilisateurs sauf l'expéditeur**.
-
-Dans cette application de chat, `io.to(room).emit(...)` est utilisé pour que **tout le monde voie le message**, y compris l'auteur.
+Dans cette application, `io.to(room).emit()` est utilisé pour que l'expéditeur voie aussi son message apparaître.
 
 ---
 
-## Question 3 - Modification de Message.js
+# Question 3 - Modification de Message.js
 
-J'ai modifié le composant `Message.js` afin d'ajouter un indicateur visuel **"✓✓ Lu"** sous mes propres messages.
+J'ai ajouté un indicateur visuel **✓✓ Lu** sous les messages envoyés par l'utilisateur courant.
 
-Le message appartient à l'utilisateur courant lorsque :
+Dans `Message.js`, on détermine si le message appartient à l'utilisateur :
 
 ```javascript
 const isOwn = msg.author === username;
 ```
 
-L'indicateur de lecture est affiché seulement si cette condition est vraie.
+Ensuite, l'indicateur est affiché uniquement pour ces messages :
 
 ```javascript
 <div className="messageMeta">
@@ -151,7 +190,7 @@ L'indicateur de lecture est affiché seulement si cette condition est vraie.
 </div>
 ```
 
-Les styles CSS ont été ajoutés dans `App.css` pour positionner l'heure et l'indicateur en bas à droite de la bulle.
+Le style CSS ajouté dans `App.css` permet de placer cet indicateur à droite :
 
 ```css
 .messageMeta{
@@ -166,87 +205,145 @@ Les styles CSS ont été ajoutés dans `App.css` pour positionner l'heure et l'i
 }
 ```
 
-Ainsi, l'indicateur **✓✓ Lu** apparaît uniquement sous les messages ayant la classe `own`.
+Ainsi, seuls mes messages affichent **✓✓ Lu**.
 
+---
 
-## Question 4 - Bouton "Quitter la salle" dans Chat.js
+# Question 4 - Bouton "Quitter la salle"
 
-J'ai ajouté un bouton **"Quitter la salle"** dans le header du composant `Chat.js`, à droite du nom de la room.
+Un bouton **Quitter la salle** a été ajouté dans `Chat.js`.
 
-### Fonctionnement
-Quand l'utilisateur clique sur ce bouton :
-- le frontend émet un évènement Socket.io `leave_room` vers le serveur ;
-- le serveur retire l'utilisateur de la room ;
-- le serveur envoie un message système pour informer les autres utilisateurs que cette personne a quitté la salle ;
-- la liste des participants et la liste des rooms sont mises à jour ;
-- le frontend réinitialise l'état local puis remet `connected` à `false` pour réafficher `Join.js`.
+Quand l'utilisateur clique dessus :
 
-### Émission côté client
-Dans `Chat.js`, l'évènement est émis ainsi :
+1. le client émet l'évènement :
 
 ```js
 socket.emit("leave_room", { username, room });
 ```
 
-### Traitement côté serveur
-Dans `server.js`, le serveur :
-- enlève l'utilisateur de `rooms[room].users` ;
-- exécute `socket.leave(room)` ;
-- diffuse un message système ;
-- met à jour `room_users` et `rooms_list`.
+2. le serveur retire l'utilisateur de la room ;
+3. un message système est envoyé aux autres utilisateurs ;
+4. la liste des participants est mise à jour ;
+5. le frontend réinitialise l'état et retourne à `Join.js`.
 
-### Réinitialisation de l'interface
-Après avoir quitté la salle, l'application :
-- vide les messages ;
-- vide la liste des utilisateurs ;
-- réinitialise le pseudo et la room ;
-- affiche de nouveau le composant `Join.js`.
-## Question 5 - Historique des connexions dans Sidebar.js
+---
 
-J'ai ajouté un historique persistant des évènements de connexion et de déconnexion.
+# Question 5 - Historique d'activité
 
-### Côté serveur
-Dans `server.js`, j'ai ajouté l'émission d'un évènement Socket.io `activity_log` vers tous les clients avec :
+Un historique des connexions et déconnexions a été ajouté.
+
+## Côté serveur
+
+Le serveur conserve les 5 derniers évènements dans :
 
 ```js
-io.emit("activity_log", {
-    username,
-    action: "a rejoint",
-    room,
-    time: now(),
-});
+let activityHistory = [];
 ```
 
-et lors d'une sortie :
+À chaque connexion ou déconnexion :
 
 ```js
-io.emit("activity_log", {
-    username,
-    action: "a quitté",
-    room,
-    time: now(),
-});
+io.emit("activity_log", log);
 ```
 
-Cet évènement est envoyé à chaque connexion à une room et à chaque déconnexion ou sortie volontaire.
+Les nouveaux clients reçoivent aussi l'historique avec :
 
-### Côté client
-Dans `Sidebar.js`, je me suis abonné à l'évènement `activity_log` avec un `useEffect`.
+```js
+socket.emit("activity_history", activityHistory);
+```
 
-Chaque nouvel évènement reçu est ajouté dans un état local `activityLogs`, en conservant uniquement les 5 derniers évènements :
+---
+
+## Côté client
+
+Dans `Chat.js`, les évènements sont reçus :
+
+```js
+socket.on("activity_log", handleActivityLog);
+socket.on("activity_history", handleActivityHistory);
+```
+
+Les évènements sont stockés dans un état React :
 
 ```js
 setActivityLogs((prev) => [log, ...prev].slice(0, 5));
 ```
 
-### Affichage
-J'ai ajouté dans la sidebar une nouvelle section intitulée **Activité récente**.
+Puis affichés dans `Sidebar.js` dans une section **Activité récente**.
 
-Le format affiché est :
+Exemple :
 
-`Alice a rejoint #Generale à 14:30`
+```
+Alice a rejoint #Generale à 14:30
+```
 
-### Différence avec la liste des participants
-La liste `room_users` montre uniquement les utilisateurs actuellement connectés.
+---
 
-L'historique d'activité, lui, conserve les derniers évènements reçus pendant toute la session, même après déconnexion des utilisateurs.
+# Question 6 - Bonus : salles privées
+
+J'ai ajouté la possibilité de créer des salles protégées par mot de passe.
+
+## Côté client
+
+Dans `Join.js` :
+
+- un champ **mot de passe optionnel** lors de la création d'une room ;
+- un cadenas 🔒 pour indiquer qu'une room est protégée ;
+- un champ de saisie du mot de passe avant de rejoindre.
+
+---
+
+## Côté serveur
+
+Chaque room contient maintenant :
+
+```js
+{
+ users: [],
+ password: ""
+}
+```
+
+Lors de `join_room`, le serveur vérifie le mot de passe.
+
+Si le mot de passe est incorrect :
+
+```js
+socket.emit("join_error", { message: "Mot de passe incorrect" });
+```
+
+---
+
+
+
+---
+
+# Instructions pour lancer en local
+
+Backend :
+
+```bash
+cd server
+node server.js
+```
+
+Frontend :
+
+```bash
+cd client
+npm start
+```
+
+Puis ouvrir :
+
+```
+http://localhost:3000
+```
+
+---
+
+# Amélioration possible
+
+Si j'avais plus de temps, j'ajouterais la **persistance des messages dans une base de données** (MongoDB ou PostgreSQL).
+
+Cela permettrait de conserver l'historique des conversations même si le serveur redémarre.

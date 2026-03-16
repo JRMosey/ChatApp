@@ -28,10 +28,10 @@ const io = new Server(server, {
 });
 
 const rooms = {
-    "Generale": { users: [] },
-    "Codding": { users: [] },
-    "Support": { users: [] },
-    "Entraide": { users: [] },
+    "Generale": { users: [], password: "" },
+    "Codding": { users: [], password: "" },
+    "Support": { users: [], password: "" },
+    "Entraide": { users: [], password: "" },
 };
 
 // Historique global des 5 derniers évènements
@@ -51,8 +51,19 @@ io.on("connection", (socket) => {
     socket.emit("rooms_list", getRoomsList());
     socket.emit("activity_history", activityHistory);
 
-    socket.on("join_room", ({ username, room }) => {
-        if (!rooms[room]) rooms[room] = { users: [] };
+    socket.on("join_room", ({ username, room, password }) => {
+        if (!rooms[room]) {
+            rooms[room] = { users: [], password: "" };
+        }
+
+        const roomPassword = rooms[room].password || "";
+
+        if (roomPassword && roomPassword !== (password || "")) {
+            socket.emit("join_error", {
+                message: "Mot de passe incorrect pour cette salle."
+            });
+            return;
+        }
 
         socket.join(room);
         socket.currentRoom = room;
@@ -83,11 +94,15 @@ io.on("connection", (socket) => {
         io.emit("activity_log", log);
     });
 
-    socket.on("create_room", ({ roomName }) => {
+    socket.on("create_room", ({ roomName, password }) => {
         const name = roomName.trim();
         if (!name || rooms[name]) return;
 
-        rooms[name] = { users: [] };
+        rooms[name] = {
+            users: [],
+            password: (password || "").trim()
+        };
+
         io.emit("rooms_list", getRoomsList());
     });
 
@@ -171,6 +186,7 @@ function getRoomsList() {
     return Object.entries(rooms).map(([name, data]) => ({
         name,
         count: data.users.length,
+        protected: !!data.password,
     }));
 }
 

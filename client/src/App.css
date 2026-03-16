@@ -651,3 +651,23 @@ body {
     margin-bottom: 8px;
     line-height: 1.4;
 }
+.joinError {
+    margin-top: 10px;
+    color: #ff6b6b;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.protectedRoomBox {
+    margin-top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.protectedRoomBox input {
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+    outline: none;
+}
