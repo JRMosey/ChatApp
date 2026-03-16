@@ -1,13 +1,8 @@
-// ============================================================
-// Sidebar.js — Panneau latéral avec la liste des utilisateurs
-// ============================================================
-
 import React from "react";
 
-function Sidebar({ users, room, show, onClose }) {
+function Sidebar({ users, room, show, onClose, activityLogs }) {
     return (
         <>
-            {/* Fond semi-transparent quand la sidebar est ouverte (mobile) */}
             {show && <div className="sidebarOverlay" onClick={onClose} />}
 
             <div className={`sidebar ${show ? "open" : ""}`}>
@@ -21,7 +16,6 @@ function Sidebar({ users, room, show, onClose }) {
                         PARTICIPANTS ({users.length})
                     </p>
 
-                    {/* 🔹 Afficher chaque utilisateur avec son initiale */}
                     {users.length > 0 ? (
                         users.map((u) => (
                             <div className="userItem" key={u.socketId}>
@@ -29,12 +23,25 @@ function Sidebar({ users, room, show, onClose }) {
                                     {u.username.charAt(0).toUpperCase()}
                                 </div>
                                 <span>{u.username}</span>
-                                {/* Point vert = en ligne */}
                                 <span className="onlineDot" />
                             </div>
                         ))
                     ) : (
                         <p className="noUsers">Aucun utilisateur</p>
+                    )}
+                </div>
+
+                <div className="sidebarSection">
+                    <p className="sidebarLabel">ACTIVITÉ RÉCENTE</p>
+
+                    {activityLogs.length > 0 ? (
+                        activityLogs.map((log, index) => (
+                            <div className="activityItem" key={index}>
+                                {log.username} {log.action} #{log.room} à {log.time}
+                            </div>
+                        ))
+                    ) : (
+                        <p className="noUsers">Aucune activité récente</p>
                     )}
                 </div>
             </div>
