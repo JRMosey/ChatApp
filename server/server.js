@@ -1,5 +1,3 @@
-// server.js
-
 const express = require("express");
 const http = require("http");
 const cors = require("cors");
@@ -34,7 +32,6 @@ const rooms = {
     "Entraide": { users: [], password: "" },
 };
 
-// Historique global des 5 derniers évènements
 let activityHistory = [];
 
 app.get("/", (req, res) => {
@@ -51,7 +48,7 @@ io.on("connection", (socket) => {
     socket.emit("rooms_list", getRoomsList());
     socket.emit("activity_history", activityHistory);
 
-    socket.on("join_room", ({ username, room, password }) => {
+    socket.on("join_room", ({ username, room, password }, callback) => {
         if (!rooms[room]) {
             rooms[room] = { users: [], password: "" };
         }
@@ -59,9 +56,12 @@ io.on("connection", (socket) => {
         const roomPassword = rooms[room].password || "";
 
         if (roomPassword && roomPassword !== (password || "")) {
-            socket.emit("join_error", {
-                message: "Mot de passe incorrect pour cette salle."
-            });
+            if (callback) {
+                callback({
+                    ok: false,
+                    message: "Mot de passe incorrect pour cette salle."
+                });
+            }
             return;
         }
 
@@ -71,6 +71,13 @@ io.on("connection", (socket) => {
 
         if (!rooms[room].users.find((u) => u.socketId === socket.id)) {
             rooms[room].users.push({ socketId: socket.id, username });
+        }
+
+        if (callback) {
+            callback({
+                ok: true,
+                room
+            });
         }
 
         io.to(room).emit("receive_message", {

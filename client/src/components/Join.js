@@ -17,44 +17,47 @@ function Join({ username, setUsername, room, setRoom, setConnected }) {
             setRoomsList(list);
         };
 
-        const handleJoinError = (error) => {
-            setErrorMessage(error.message || "Impossible de rejoindre la salle.");
-            setConnected(false);
-        };
-
         if (!socket.connected) {
             socket.connect();
         }
 
         socket.on("rooms_list", handleRoomsList);
-        socket.on("join_error", handleJoinError);
 
         return () => {
             socket.off("rooms_list", handleRoomsList);
-            socket.off("join_error", handleJoinError);
         };
-    }, [socket, setConnected]);
+    }, [socket]);
 
     const joinRoom = (selectedRoom, providedPassword = "") => {
         const roomToJoin = selectedRoom || room;
+
         if (!username.trim() || !roomToJoin.trim()) return;
 
         setErrorMessage("");
 
         const doJoin = () => {
-            socket.emit("join_room", {
-                username: username.trim(),
-                room: roomToJoin.trim(),
-                password: providedPassword,
-            });
+            socket.emit(
+                "join_room",
+                {
+                    username: username.trim(),
+                    room: roomToJoin.trim(),
+                    password: providedPassword,
+                },
+                (response) => {
+                    if (!response || !response.ok) {
+                        setErrorMessage(
+                            response?.message || "Impossible de rejoindre la salle."
+                        );
+                        setConnected(false);
+                        return;
+                    }
 
-            setRoom(roomToJoin.trim());
-
-            setTimeout(() => {
-                if (!errorMessage) {
+                    setRoom(response.room);
+                    setJoinPassword("");
+                    setSelectedProtectedRoom(null);
                     setConnected(true);
                 }
-            }, 120);
+            );
         };
 
         if (socket.connected) {
@@ -83,11 +86,7 @@ function Join({ username, setUsername, room, setRoom, setConnected }) {
 
         if (!username.trim()) {
             setRoom(roomData.name);
-            if (roomData.protected) {
-                setSelectedProtectedRoom(roomData.name);
-            } else {
-                setSelectedProtectedRoom(null);
-            }
+            setSelectedProtectedRoom(roomData.protected ? roomData.name : null);
             return;
         }
 
@@ -130,9 +129,7 @@ function Join({ username, setUsername, room, setRoom, setConnected }) {
                     />
                 </div>
 
-                {errorMessage && (
-                    <p className="joinError">{errorMessage}</p>
-                )}
+                {errorMessage && <p className="joinError">{errorMessage}</p>}
 
                 <div className="roomsSection">
                     <div className="roomsSectionHeader">
@@ -155,7 +152,6 @@ function Join({ username, setUsername, room, setRoom, setConnected }) {
                                 onChange={(e) => setNewRoomName(e.target.value)}
                                 maxLength={30}
                             />
-
                             <input
                                 type="password"
                                 placeholder="Mot de passe (optionnel)"
@@ -163,7 +159,6 @@ function Join({ username, setUsername, room, setRoom, setConnected }) {
                                 onChange={(e) => setNewRoomPassword(e.target.value)}
                                 maxLength={30}
                             />
-
                             <button onClick={createRoom} disabled={!newRoomName.trim()}>
                                 Créer
                             </button>
